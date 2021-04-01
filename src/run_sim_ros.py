@@ -1,10 +1,10 @@
 #!/usr/bin/env python
 import rospy
 import tf.transformations
-from geometry_msgs.msg import Quaternion
+from geometry_msgs.msg import Quaternion, PoseStamped
 from ackermann_msgs.msg import AckermannDriveStamped
 from nav_msgs.msg import Odometry
-from sensor_msgs.msg import Imu
+from sensor_msgs.msg import Imu, JointState
 import json
 import time
 from io import BytesIO
@@ -37,8 +37,10 @@ class SimpleClient(SDClient):
         self.twist = np.zeros(6)
         self.accel = np.zeros(3)
         self.speed = 0
+        self.steering_angle = 0
         self.heading = 0
         self.cte = 0
+        self.throttle_failsafe = time.time()
 
     def on_msg_recv(self, json_packet):
         # global car
@@ -50,19 +52,18 @@ class SimpleClient(SDClient):
             # the imitation learning model uses grayscale images and therefore in this particular script, all images are converted to grayscale (as even gray images come in as RGB images with all channels being equal)
             time_stamp = time.time() # this time stamp is useful for time-sensitive control algorithms.
             # {"msg_type":"telemetry","steering_angle":0,"throttle":0,"speed":1.713824E-06,"hit":"none","pos_x":50.01714,"pos_y":0.1858531,"pos_z":49.96981,"vel_x":4.037573E-08,"vel_y":-1.637578E-06,"vel_z":5.03884E-07,"quat_x":-8.79804E-05,"quat_y":0.0001398507,"quat_z":1.122981E-05,"quat_w":1,"heading":1.570517,"gyro_x":5.826035E-06,"gyro_y":-5.950142E-09,"gyro_z":-4.740134E-07,"Ax":-5.411929E-07,"Ay":-8.932128E-06,"Az":2.184387E-06,"time":9.790786,"cte":0.001136682}
-            self.pose[:3] = np.array([ json_packet["pos_x"], json_packet["pos_z"], json_packet["pos_y"] ])
+            self.pose[:3] = np.array([ json_packet["pos_x"], json_packet["pos_y"], json_packet["pos_z"] ])
             self.pose[:2] -= 50.0 # the sim has a weird 50x50 offset for some reason.
             self.pose[3:] = np.array([ json_packet["quat_x"],json_packet["quat_y"], json_packet["quat_z"], json_packet["quat_w"]])
-            self.twist[:3] = np.array([ json_packet["vel_x"],json_packet["vel_z"], json_packet["vel_y"]])
+            self.twist[:3] = np.array([ json_packet["vel_x"],json_packet["vel_y"], json_packet["vel_z"]])
             self.twist[3:] = np.array([ json_packet["gyro_x"], json_packet["gyro_z"], json_packet["gyro_y"]])
-            A = np.array([json_packet["Ax"],json_packet["Az"],json_packet["Ay"]])
+            self.accel = np.array([json_packet["Ax"],json_packet["Ay"],json_packet["Az"]])
             self.heading = json_packet["heading"]
             self.speed = json_packet["speed"]
+            print(self.speed)
+            self.steering_angle = json_packet["steering_angle"]
             self.hit = json_packet["hit"]
             self.cte = json_packet["cte"]
-            self.accel[0] = A[0]*m.cos(self.heading) - A[1]*m.sin(self.heading)
-            self.accel[1] = A[0]*m.sin(self.heading) + A[1]*m.cos(self.heading)
-            self.accel[2] = A[2]
 
             dt = time.time() - self.now
             self.now = time.time()
@@ -80,7 +81,8 @@ class SimpleClient(SDClient):
 
 def input_callback(data,args):
     client = args
-    speed = data.drive.speed
+    client.throttle_failsafe = time.time()
+    speed = data.drive.speed # scaling
     steering = data.drive.steering_angle
     client.send_controls(steering*(57.3/30),speed) # gotta normalize it
     
@@ -119,20 +121,27 @@ def test_clients(args):
             print("loading")
 
     pub = []
+    pose_pub = []
+    joint_pub = []
     imu_pub = []
     goal_pub = []
     sub = []
     # this is basically initializing all the subscribers for counting the number of cars and publishers for initiailizing pose and goal points.
     for i in range(num_clients):
         subscriber = rospy.Subscriber("/car" + str(i+1) + "/mux/ackermann_cmd_mux/input/navigation", AckermannDriveStamped, input_callback,(clients[i]) )
-        publisher = rospy.Publisher("/car" + str(i+1) + "/car_odom", Odometry, queue_size=1)
-        imu_publisher = rospy.Publisher("/car" + str(i+1) + "/imu", Imu, queue_size = 1)
+        publisher = rospy.Publisher("/car" + str(i+1) + "/car_odom", Odometry, queue_size=10)
+        pose_publisher = rospy.Publisher("/car"+str(i+1)+"/car_pose",PoseStamped,queue_size=10)
+        joint_publisher = rospy.Publisher("joint_states", JointState, queue_size =10)
+        imu_publisher = rospy.Publisher("/car" + str(i+1) + "/imu", Imu, queue_size = 10)
         # sub.append(subscriber)
         pub.append(publisher)
         imu_pub.append(imu_publisher)
+        pose_pub.append(pose_publisher)
+        joint_pub.append(joint_publisher)
 
     do_drive = True
     while not rospy.is_shutdown() or do_drive == False:
+        time.sleep(0.02)
         try:
             now = rospy.Time.now()
             cur_odom = Odometry()
@@ -157,6 +166,61 @@ def test_clients(args):
                 cur_odom.twist.twist.angular.z = clients[i].twist[5]
                 pub[i].publish(cur_odom)
 
+            broadcaster = tf.TransformBroadcaster()
+
+            cur_pose = PoseStamped()
+            cur_pose.header.frame_id = "/map"
+            cur_pose.header.stamp = now
+            for i in range(num_clients):
+                cur_pose.pose.position.x = clients[i].pose[0]
+                cur_pose.pose.position.y = clients[i].pose[1]
+                cur_pose.pose.position.z = clients[i].pose[2]
+                rot = clients[i].heading
+                #wrap around
+                if(rot>2*m.pi):
+                    rot -= 2*m.pi
+                if(rot< -2*m.pi):
+                    rot += 2*m.pi
+                cur_pose.pose.orientation = angle_to_quaternion(rot)
+                broadcaster.sendTransform(
+                (0,0,0),
+                tf.transformations.quaternion_from_euler(0, 0, 0),
+                now,
+                "/car"+str(i+1)+"/" + "odom",
+                "/map",
+                )  
+                broadcaster.sendTransform(
+                (clients[i].pose[0],clients[i].pose[1],clients[i].pose[2]),
+                tf.transformations.quaternion_from_euler(0, 0, rot),
+                now,
+                "/car"+str(i+1)+"/" + "base_footprint",
+                "/car"+str(i+1)+"/" + "odom",
+                )  
+                pose_pub[i].publish(cur_pose)
+
+            cur_joint = JointState()
+            cur_joint.header.stamp = now
+            # cur_joint.frame_id = "/wheel_link"
+            cur_joint.name = [
+                "front_left_wheel_throttle",
+                "front_right_wheel_throttle",
+                "back_left_wheel_throttle",
+                "back_right_wheel_throttle",
+                "front_left_wheel_steer",
+                "front_right_wheel_steer",
+            ]
+            cur_joint.position = [0, 0, 0, 0, 0, 0]
+            cur_joint.velocity = []
+            cur_joint.effort = []
+            for i in range(num_clients):
+                cur_joint.position[0] = clients[i].speed*0.032/0.0976# can't really integrate :P. not particularly important though.
+                cur_joint.position[1] = clients[i].speed*0.032/0.0976
+                cur_joint.position[2] = clients[i].speed*0.032/0.0976
+                cur_joint.position[3] = clients[i].speed*0.032/0.0976
+                cur_joint.position[4] = clients[i].steering_angle/57.3
+                cur_joint.position[5] = clients[i].steering_angle/57.3
+                joint_pub[i].publish(cur_joint)
+
         	cur_imu = Imu()
         	cur_imu.header.frame_id = "/base_link"
         	cur_imu.header.stamp = now
@@ -175,7 +239,8 @@ def test_clients(args):
         		cur_imu.linear_acceleration.z = clients[i].accel[2]
 
         		imu_pub[i].publish(cur_imu)
-
+                if(time.time() - clients[i].throttle_failsafe > 1):
+                    clients[i].send_controls(0,0)
                 if clients[i].aborted:
                     print("Client socket problem, stopping driving.")
                     do_drive = False
