@@ -2,7 +2,7 @@
 import rospy
 import tf
 import tf.transformations
-from geometry_msgs.msg import Quaternion, PoseStamped
+from geometry_msgs.msg import Quaternion, PoseStamped, PoseWithCovarianceStamped
 from ackermann_msgs.msg import AckermannDriveStamped
 from nav_msgs.msg import Odometry
 from sensor_msgs.msg import Imu, JointState
@@ -121,191 +121,290 @@ class SimpleClient(SDClient):
         self.send(msg)
         #this sleep lets the SDClient thread poll our message and send it out.
         time.sleep(self.poll_socket_sleep_sec)
-
-
-def input_callback(data,args):
-    """
-    ROS-side callback for getting the car control inputs.
-    """
-    client = args
-    client.throttle_failsafe = time.time()
-    speed = data.drive.speed # scaling
-    steering = data.drive.steering_angle
-    client.send_controls(steering*(57.3/30),speed) # gotta normalize it
     
-
-def create_client():
+class RacecarState:
     """
-    Create clients that connect to the sim engine.
-    Params:
-        args (track type, control type etc)
-    Returns:
-        None
+    __init__: Initialize params, publishers, subscribers, and timer
     """
-    host = "127.0.0.1" # local host
-    port = 9091
 
-    # Start Clients
-    client = SimpleClient(address=(host, port),poll_socket_sleep_time=0.001)
-    msg = '{ "msg_type" : "load_scene", "scene_name" : "generated_road" }'
-    client.send(msg)
-    time.sleep(1)# Wait briefly for the scene to load.         
-    # Car config
-    msg = '{ "msg_type" : "car_config", "body_style" : "mushr", "body_r" : "0", "body_g" : "0", "body_b" : "255", "car_name" : "MUSHR", "font_size" : "100" }' # do not change
-    client.send(msg)
-    # print("reached here")
-    time.sleep(1)
+    def __init__(self):
+        self.create_client()
+        self.X_offset = float(rospy.get_param("~X_offset",0.0))
+        self.Y_offset = float(rospy.get_param("~Y_offset",0.0))
+        self.angle_offset = float(rospy.get_param("~angle_offset",0.0))
+        # Length of the car
+        self.CAR_LENGTH = float(rospy.get_param("vesc/chassis_length", 0.33))
 
-    loaded = False
-    while(not loaded):
-        time.sleep(1.0)
-        loaded = client.car_loaded  
-        print("loading")
+        # Width of the car
+        self.CAR_WIDTH = float(rospy.get_param("vesc/wheelbase", 0.29))
 
-    car_name = rospy.get_param("car_name", "")
-    TF_PREFIX = str(rospy.get_param("~tf_prefix", "").rstrip("/"))
-    if len(TF_PREFIX) > 0:
-        TF_PREFIX = TF_PREFIX + "/"
-    # this is basically initializing all the subscribers for counting the number of cars and publishers for initiailizing pose and goal points.
-    odom_publisher = rospy.Publisher("car_odom", Odometry, queue_size=10)
-    pose_publisher = rospy.Publisher("car_pose",PoseStamped,queue_size=10)
-    joint_publisher = rospy.Publisher("joint_states", JointState, queue_size =10)
-    imu_publisher = rospy.Publisher("imu", Imu, queue_size = 10)
-    control_subscriber = rospy.Subscriber("mux/ackermann_cmd_mux/input/navigation", AckermannDriveStamped, input_callback,(client) )
-    
-    broadcaster = tf.TransformBroadcaster()
-    cur_odom = Odometry()
-    cur_odom.header.frame_id = "/map"
-    cur_pose = PoseStamped()
-    cur_pose.header.frame_id = "/map"
-    cur_joint = JointState()
-    cur_joint.position = [0, 0, 0, 0, 0, 0]
-    cur_joint.velocity = []
-    cur_joint.effort = []
-    cur_joint.name = [
-        "front_left_wheel_throttle",
-        "front_right_wheel_throttle",
-        "back_left_wheel_throttle",
-        "back_right_wheel_throttle",
-        "front_left_wheel_steer",
-        "front_right_wheel_steer",
-    ]
-    cur_imu = Imu()
-    cur_imu.header.frame_id = "/base_link"
+        # The radius of the car wheel in meters
+        self.CAR_WHEEL_RADIUS = 0.0976 / 2.0
+
+        # Rate at which to publish joints and tf
+        self.UPDATE_RATE = float(rospy.get_param("~update_rate", 50.0))
+
+        # Append this prefix to any broadcasted TFs
+        self.TF_PREFIX = str(rospy.get_param("~tf_prefix", "").rstrip("/"))
+        if len(self.TF_PREFIX) > 0:
+            self.TF_PREFIX = self.TF_PREFIX + "/"
+        # The most recent time stamp
+        self.last_stamp = None
+
+        # The most recent transform from odom to base_footprint
+        self.cur_odom_to_base_trans = np.array([0, 0], dtype=np.float)
+        self.cur_odom_to_base_rot = 0.0
+
+        # The most recent transform from the map to odom
+        self.cur_map_to_odom_trans = np.array([0,0], dtype=np.float)
+        self.cur_map_to_odom_rot = 0.0
+
+        # Message used to publish joint values
+        self.joint_msg = JointState()
+        self.joint_msg.name = [
+            "front_left_wheel_throttle",
+            "front_right_wheel_throttle",
+            "back_left_wheel_throttle",
+            "back_right_wheel_throttle",
+            "front_left_wheel_steer",
+            "front_right_wheel_steer",
+        ]
+        self.joint_msg.position = [0, 0, 0, 0, 0, 0]
+        self.joint_msg.velocity = []
+        self.joint_msg.effort = []
+
+        # Publishes joint messages
+        self.br = tf.TransformBroadcaster()
+
+        # Duration param controls how often to publish default map to odom tf
+        # if no other nodes are publishing it
+        self.transformer = tf.TransformListener()
+
+        # Publishes joint values
+        self.state_publisher = rospy.Publisher("car_pose", PoseStamped, queue_size=1)
+        self.odom_publisher = rospy.Publisher("car_odom", Odometry, queue_size=10)
+        # Publishes joint values
+        self.cur_joints_pub = rospy.Publisher("joint_states", JointState, queue_size=1)
+
+        self.imu_publisher = rospy.Publisher("imu", Imu, queue_size = 10)
+
+        # Subscribes to the initial pose of the car
+        self.init_pose_sub = rospy.Subscriber(
+            "initialpose", PoseWithCovarianceStamped, self.init_pose_cb, queue_size=1
+        )
+        
+        self.cur_odom = Odometry()
+        self.cur_odom.header.frame_id = "/map"
+        self.cur_pose = PoseStamped()
+        self.cur_pose.header.frame_id = "/map"
+        self.cur_joint = JointState()
+        self.cur_joint.position = [0, 0, 0, 0, 0, 0]
+        self.cur_joint.velocity = []
+        self.cur_joint.effort = []
+        self.cur_joint.name = [
+            "front_left_wheel_throttle",
+            "front_right_wheel_throttle",
+            "back_left_wheel_throttle",
+            "back_right_wheel_throttle",
+            "front_left_wheel_steer",
+            "front_right_wheel_steer",
+        ]
+        self.cur_imu = Imu()
+        self.cur_imu.header.frame_id = "/base_link"
+
+        # Timer to updates joints and tf
+        self.update_timer = rospy.Timer(
+            rospy.Duration.from_sec(1.0 / self.UPDATE_RATE), self.timer_cb
+        )
+        
+        control_subscriber = rospy.Subscriber("mux/ackermann_cmd_mux/output", AckermannDriveStamped, self.input_callback )
 
 
-    do_drive = True
-    while not rospy.is_shutdown() or do_drive == False:
-        time.sleep(0.05)
+    def create_client(self):
+        """
+        Create clients that connect to the sim engine.
+        Params:
+            None (maybe initial position at some point)
+        Returns:
+            None
+        """
+        host = "127.0.0.1" # local host
+        port = 9091
+
+        # Start Clients
+        self.client = SimpleClient(address=(host, port),poll_socket_sleep_time=0.001)
+        msg = '{ "msg_type" : "load_scene", "scene_name" : "generated_road" }'
+        self.client.send(msg)
+        time.sleep(1)# Wait briefly for the scene to load.         
+        # Car config
+        msg = '{ "msg_type" : "car_config", "body_style" : "mushr", "body_r" : "0", "body_g" : "0", "body_b" : "255", "car_name" : "MUSHR", "font_size" : "100", "start_X" : "0.00", "start_Y" : "0.00", "start_Z" : "0.00", yaw : "1.57" }' # do not change
+        self.client.send(msg)
+        # print("reached here")
+        time.sleep(1)
+
+        loaded = False
+        while(not loaded):
+            time.sleep(1.0)
+            loaded = self.client.car_loaded  
+            print("loading")
+
+    def input_callback(self,data):
+        """
+        ROS-side callback for getting the car control inputs.
+        """
+        self.client.throttle_failsafe = time.time()
+        speed = 3*data.drive.speed # scaling
+        steering = -data.drive.steering_angle*57.3/16
+        self.client.send_controls(steering,speed) # gotta normalize it
+
+    def init_pose_cb(self,msg):
+        return
+
+    def timer_cb(self,event):
         try:
             now = rospy.Time.now()
-            cur_odom.header.stamp = now
-            cur_odom.pose.pose.position.x = client.pose[0]
-            cur_odom.pose.pose.position.y = client.pose[1]
-            cur_odom.pose.pose.position.z = client.pose[2]
-            rot = client.heading
+            self.cur_odom.header.stamp = now
+            self.cur_odom.pose.pose.position.x = self.client.pose[0]
+            self.cur_odom.pose.pose.position.y = self.client.pose[1]
+            self.cur_odom.pose.pose.position.z = self.client.pose[2]
+            rot = self.client.heading
             #wrap around
             if(rot>2*m.pi):
                 rot -= 2*m.pi
             if(rot< -2*m.pi):
                 rot += 2*m.pi
-            cur_odom.pose.pose.orientation = angle_to_quaternion(rot)
-            cur_odom.twist.twist.linear.x = client.twist[0]
-            cur_odom.twist.twist.linear.y = client.twist[1]
-            cur_odom.twist.twist.linear.z = client.twist[2]
-            cur_odom.twist.twist.angular.x = client.twist[3]
-            cur_odom.twist.twist.angular.y = client.twist[4]
-            cur_odom.twist.twist.angular.z = client.twist[5]
-            odom_publisher.publish(cur_odom)
+            self.cur_odom.pose.pose.orientation = angle_to_quaternion(rot)
+            self.cur_odom.twist.twist.linear.x = self.client.twist[0]
+            self.cur_odom.twist.twist.linear.y = self.client.twist[1]
+            self.cur_odom.twist.twist.linear.z = self.client.twist[2]
+            self.cur_odom.twist.twist.angular.x = self.client.twist[3]
+            self.cur_odom.twist.twist.angular.y = self.client.twist[4]
+            self.cur_odom.twist.twist.angular.z = self.client.twist[5]
+            self.odom_publisher.publish(self.cur_odom)
 
-            cur_pose.header.stamp = now
-            cur_pose.pose.position.x = client.pose[0]
-            cur_pose.pose.position.y = client.pose[1]
-            cur_pose.pose.position.z = client.pose[2]
-            rot = client.heading
+            self.cur_pose.header.stamp = now
+            self.cur_pose.pose.position.x = self.client.pose[0]
+            self.cur_pose.pose.position.y = self.client.pose[1]
+            self.cur_pose.pose.position.z = self.client.pose[2]
+            rot = self.client.heading
             #wrap around
             if(rot>2*m.pi):
                 rot -= 2*m.pi
             if(rot< -2*m.pi):
                 rot += 2*m.pi
-            cur_pose.pose.orientation = angle_to_quaternion(rot)
+            self.cur_pose.pose.orientation = angle_to_quaternion(rot)
             
-            broadcaster.sendTransform(
+            self.br.sendTransform(
             (0,0,0),
             tf.transformations.quaternion_from_euler(0, 0, 0),
             now,
-            TF_PREFIX + "odom",
+            self.TF_PREFIX + "odom",
             "/map",
             )  
-            broadcaster.sendTransform(
-            (client.pose[0],client.pose[1],client.pose[2]),
+            self.br.sendTransform(
+            (self.client.pose[0],self.client.pose[1],self.client.pose[2]),
             tf.transformations.quaternion_from_euler(0, 0, rot),
             now,
-            TF_PREFIX + "base_footprint",
-            TF_PREFIX + "odom",
+            self.TF_PREFIX + "base_footprint",
+            self.TF_PREFIX + "odom",
             )  
-            pose_publisher.publish(cur_pose)
+            self.state_publisher.publish(self.cur_pose)
 
-            cur_joint.header.stamp = now
-            #TODO: fix this 
-            cur_joint.position[0] += client.speed*0.032/0.0976# can't really integrate :P. not particularly important though.
-            cur_joint.position[1] += client.speed*0.032/0.0976
-            cur_joint.position[2] += client.speed*0.032/0.0976
-            cur_joint.position[3] += client.speed*0.032/0.0976
-            cur_joint.position[4] = client.steering_angle/57.3
-            cur_joint.position[5] = client.steering_angle/57.3
-            joint_publisher.publish(cur_joint)
+            self.cur_joint.header.stamp = now
+            #TODO: fix this
+            delta = -16*self.client.steering_angle/57.3
+            
+            if np.abs(delta) < 1e-2:
+                # New joint values
+                joint_left_throttle = self.client.speed * (1.0/self.UPDATE_RATE) / self.CAR_WHEEL_RADIUS
+                joint_right_throttle = self.client.speed * (1.0/self.UPDATE_RATE) / self.CAR_WHEEL_RADIUS
+                joint_left_steer = 0.0
+                joint_right_steer = 0.0
+            else:    
+                tan_delta = m.tan(delta)
+                h_val = (self.CAR_LENGTH / tan_delta) - (self.CAR_WIDTH / 2.0)
+                joint_outer_throttle = (
+                    ((self.CAR_WIDTH + h_val) / (0.5 * self.CAR_WIDTH + h_val))
+                    * self.client.speed
+                    * (1.0/self.UPDATE_RATE)
+                    / self.CAR_WHEEL_RADIUS
+                )
+                joint_inner_throttle = (
+                    ((h_val) / (0.5 * self.CAR_WIDTH + h_val))
+                    * self.client.speed
+                    * (1.0/self.UPDATE_RATE)
+                    / self.CAR_WHEEL_RADIUS
+                )
+                joint_outer_steer = m.atan2(self.CAR_LENGTH, self.CAR_WIDTH + h_val)
+                joint_inner_steer = m.atan2(self.CAR_LENGTH, h_val)
 
-            cur_imu.header.stamp = now
-            cur_imu.orientation.x = client.pose[3]
-            cur_imu.orientation.y = client.pose[4]
-            cur_imu.orientation.z = client.pose[5]
-            cur_imu.orientation.w = client.pose[6]
+                # Assign joint values according to whether we are turning left or right
+                if (delta) > 0.0:
+                    joint_left_throttle = joint_inner_throttle
+                    joint_right_throttle = joint_outer_throttle
+                    joint_left_steer = joint_inner_steer
+                    joint_right_steer = joint_outer_steer
 
-            cur_imu.angular_velocity.x = client.twist[3]
-            cur_imu.angular_velocity.y = client.twist[4]
-            cur_imu.angular_velocity.z = client.twist[5]
+                else:
+                    joint_left_throttle = joint_outer_throttle
+                    joint_right_throttle = joint_inner_throttle
+                    joint_left_steer = joint_outer_steer - m.pi
+                    joint_right_steer = joint_inner_steer - m.pi
 
-            cur_imu.linear_acceleration.x = client.accel[0]
-            cur_imu.linear_acceleration.y = client.accel[1]
-            cur_imu.linear_acceleration.z = client.accel[2]
+            self.cur_joint.position[0] += joint_left_throttle
+            self.cur_joint.position[1] += joint_right_throttle
+            self.cur_joint.position[2] += joint_left_throttle
+            self.cur_joint.position[3] += joint_right_throttle
+            self.cur_joint.position[4] = joint_left_steer
+            self.cur_joint.position[5] = joint_right_steer
+            self.cur_joints_pub.publish(self.cur_joint)
 
-            imu_publisher.publish(cur_imu)
-            if(time.time() - client.throttle_failsafe > 1):
-                client.send_controls(0,0)
-            if client.aborted:
-                print("Client socket problem, stopping driving.")
+            self.cur_imu.header.stamp = now
+            self.cur_imu.orientation.x = self.client.pose[3]
+            self.cur_imu.orientation.y = self.client.pose[4]
+            self.cur_imu.orientation.z = self.client.pose[5]
+            self.cur_imu.orientation.w = self.client.pose[6]
+
+            self.cur_imu.angular_velocity.x = self.client.twist[3]
+            self.cur_imu.angular_velocity.y = self.client.twist[4]
+            self.cur_imu.angular_velocity.z = self.client.twist[5]
+
+            self.cur_imu.linear_acceleration.x = self.client.accel[0]
+            self.cur_imu.linear_acceleration.y = self.client.accel[1]
+            self.cur_imu.linear_acceleration.z = self.client.accel[2]
+
+            self.imu_publisher.publish(self.cur_imu)
+            
+            ## failsafe mimicking
+            if(time.time() - self.client.throttle_failsafe > 1):
+                self.client.send_controls(0,0)
+
+            if self.client.aborted:
+                print("self.Client socket problem, stopping driving.")
                 do_drive = False
 
         except KeyboardInterrupt:
+            msg = '{ "msg_type" : "exit_scene" }'
+            self.client.send(msg)
+
+            time.sleep(1.0)
+
+            # Close down client
+            print("waiting for msg loop to stop")
+            self.client.stop()
+
+            print("stopped")
             exit()
-        
+
         except Exception as e:
             print(traceback.format_exc())
 
         except:
             pass
-    # Exist Scene
-    msg = '{ "msg_type" : "exit_scene" }'
-    client.send(msg)
 
-    time.sleep(1.0)
-
-    # Close down clients
-    print("waiting for msg loop to stop")
-    client.stop()
-
-    print("clients to stopped")
 
 
 if __name__ == "__main__":
-    env_list = [
-       "warehouse",
-       "generated_road",
-       "avc2",
-       "generated_track",
-       "MUSHR_track",
-       "MUSHR_benchmark"
-    ]
     rospy.init_node("connector")
-    create_client()
+    rs = RacecarState()
+    rospy.spin()
