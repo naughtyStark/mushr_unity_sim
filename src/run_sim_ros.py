@@ -18,17 +18,46 @@ import traceback # this is just for seeing the cause of the error if one is thro
 ###########################################
 
 def angle_to_quaternion(angle):
-    """Convert an angle in radians into a quaternion _message_."""
+    """
+    Convert an angle in radians into a quaternion _message_.
+
+    Params:
+        angle in radians
+    Returns:
+        quaternion (unit quaternion)
+    """
     return Quaternion(*tf.transformations.quaternion_from_euler(0, 0, angle))
 
 def quaternion_to_angle(quat):
-	quat_list = [quat[0], quat[1], quat[2], quat[3]]
+	"""
+    Convert a quaternion to angle in radians
+
+    Params: 
+        unit quaternion
+
+    Returns:
+        angle in radians (roll, pitch, yaw)
+    """
+    quat_list = [quat[0], quat[1], quat[2], quat[3]]
 	(r,p,y) = tf.transformations.euler_to_quaternion(quat_list)
 	return r,p,y
 
 class SimpleClient(SDClient):
-
+"""
+A class to create an interface with the unity game/sim
+"""
     def __init__(self, address, args, poll_socket_sleep_time=0.001):
+        """
+        init function. 
+
+        Params:
+            address (host,port)
+            arguments related to ...something. Not sure where I use them, but I'm sure it would break if I didn't have this.
+            poll_socket_sleep time: sleep time for the polling system. Keep as low as possible
+        
+        Returns:
+            None
+        """
         super(SimpleClient,self).__init__(*address, poll_socket_sleep_time=poll_socket_sleep_time)
         self.last_image = None
         self.car_loaded = False
@@ -43,7 +72,17 @@ class SimpleClient(SDClient):
         self.throttle_failsafe = time.time()
 
     def on_msg_recv(self, json_packet):
-        # global car
+        """
+        Telemetry receiving callback.
+
+        Called when unity sim publishes the car's state.
+
+        Params: 
+            json packet. This callback is called by a function in a different file, so you won't see where this function is actually "called"
+        
+        Returns:
+            None
+        """
         if json_packet['msg_type'] == "car_loaded":
             self.car_loaded = True
         
@@ -68,10 +107,16 @@ class SimpleClient(SDClient):
             dt = time.time() - self.now
             self.now = time.time()
 
-    def send_controls(self, steering, throttle):
+    def send_controls(self, steering, speed):
+        """
+        Send controls to the unity sim engine
+
+        Params:
+            scaled steering angle (-1,1), absolute speed (0-12 m/s)
+        """
         p = { "msg_type" : "control",
                 "steering" : steering.__str__(),
-                "throttle" : throttle.__str__(),
+                "throttle" : speed.__str__(),
                 "brake" : "0.0" }
         msg = json.dumps(p)
         self.send(msg)
@@ -80,6 +125,9 @@ class SimpleClient(SDClient):
 
 
 def input_callback(data,args):
+    """
+    ROS-side callback for getting the car control inputs.
+    """
     client = args
     client.throttle_failsafe = time.time()
     speed = data.drive.speed # scaling
@@ -87,11 +135,14 @@ def input_callback(data,args):
     client.send_controls(steering*(57.3/30),speed) # gotta normalize it
     
 
-###########################################
-## Make some clients and have them connect with the simulator
-
-def test_clients(args):
-    # test params
+def create_clients(args):
+    """
+    Create clients that connect to the sim engine.
+    Params:
+        args (track type, control type etc)
+    Returns:
+        None
+    """
     host = "127.0.0.1" # local host
     port = 9091
     num_clients = 1
@@ -268,6 +319,9 @@ def test_clients(args):
 
 
 if __name__ == "__main__":
+    """
+    main. Name says it all.
+    """
     env_list = [
        "warehouse",
        "generated_road",
@@ -283,5 +337,5 @@ if __name__ == "__main__":
     parser.add_argument('--env_name', type=str, default='generated_road', help='name of donkey sim environment', choices=env_list)
 
     args, unknown = parser.parse_known_args()
-    test_clients(args)
+    create_clients(args)
 
