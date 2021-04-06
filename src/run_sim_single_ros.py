@@ -28,19 +28,18 @@ def angle_to_quaternion(angle):
     """
     return Quaternion(*tf.transformations.quaternion_from_euler(0, 0, angle))
 
-def quaternion_to_angle(quat):
+def quaternion_to_angle(q):
     """
-    Convert a quaternion to angle in radians
+    
+    Convert a quaternion _message_ into an angle in radians.
+    The angle represents the yaw.
+    This is not just the z component of the quaternion.
 
-    Params: 
-        unit quaternion
-
-    Returns:
-        angle in radians (roll, pitch, yaw)
+    This function was finessed from the mushr_base/src/utils.py
     """
-    quat_list = [quat[0], quat[1], quat[2], quat[3]]
-    (r,p,y) = tf.transformations.euler_to_quaternion(quat_list)
-    return r,p,y
+    x, y, z, w = q.x, q.y, q.z, q.w
+    roll, pitch, yaw = tf.transformations.euler_from_quaternion((x, y, z, w))
+    return roll, pitch, yaw
 
 class SimpleClient(SDClient):
     """
@@ -69,6 +68,7 @@ class SimpleClient(SDClient):
         self.steering_angle = 0
         self.heading = 0
         self.cte = 0
+        self.time_stamp = time.time()
         self.throttle_failsafe = time.time()
 
     def on_msg_recv(self, json_packet):
@@ -87,12 +87,9 @@ class SimpleClient(SDClient):
             self.car_loaded = True
         
         if json_packet['msg_type'] == "telemetry":
-            # the images that come in are grayscale except for the center image, which is RGB. This was done to maintain compatibility with Reinforcement learning script
-            # the imitation learning model uses grayscale images and therefore in this particular script, all images are converted to grayscale (as even gray images come in as RGB images with all channels being equal)
-            time_stamp = time.time() # this time stamp is useful for time-sensitive control algorithms.
-            # {"msg_type":"telemetry","steering_angle":0,"throttle":0,"speed":1.713824E-06,"hit":"none","pos_x":50.01714,"pos_y":0.1858531,"pos_z":49.96981,"vel_x":4.037573E-08,"vel_y":-1.637578E-06,"vel_z":5.03884E-07,"quat_x":-8.79804E-05,"quat_y":0.0001398507,"quat_z":1.122981E-05,"quat_w":1,"heading":1.570517,"gyro_x":5.826035E-06,"gyro_y":-5.950142E-09,"gyro_z":-4.740134E-07,"Ax":-5.411929E-07,"Ay":-8.932128E-06,"Az":2.184387E-06,"time":9.790786,"cte":0.001136682}
+            self.time_stamp = time.time() # this time stamp is useful for time-sensitive control algorithms.
             self.pose[:3] = np.array([ json_packet["pos_x"], json_packet["pos_y"], json_packet["pos_z"] ])
-            self.pose[:2] -= 50.0 # the sim has a weird 50x50 offset for some reason.
+            self.pose[:2] -= 50.0 # the sim needs a 50x50 offset because starting at 0,0 is the equivalent of starting from the edge and can throw weird bugs..
             self.pose[3:] = np.array([ json_packet["quat_x"],json_packet["quat_y"], json_packet["quat_z"], json_packet["quat_w"]])
             self.twist[:3] = np.array([ json_packet["vel_x"],json_packet["vel_y"], json_packet["vel_z"]])
             self.twist[3:] = np.array([ json_packet["gyro_x"], json_packet["gyro_z"], json_packet["gyro_y"]])
@@ -236,10 +233,9 @@ class RacecarState:
         msg = '{ "msg_type" : "load_scene", "scene_name" : "generated_road" }'
         self.client.send(msg)
         time.sleep(1)# Wait briefly for the scene to load.         
-        # Car config
-        msg = '{ "msg_type" : "car_config", "body_style" : "mushr", "body_r" : "0", "body_g" : "0", "body_b" : "255", "car_name" : "MUSHR", "font_size" : "100", "start_X" : "0.00", "start_Y" : "0.00", "start_Z" : "0.00", yaw : "1.57" }' # do not change
+        # Car config: this is just for initialization. The position will be reset to 50,50 when the car loads
+        msg = '{ "msg_type" : "car_config", "body_style" : "mushr", "body_r" : "0", "body_g" : "0", "body_b" : "255", "car_name" : "MUSHR", "font_size" : "100", "start_X" : "0.00", "start_Y" : "0.00", "start_Z" : "0.20", "yaw" : "0.0" }' # do not change
         self.client.send(msg)
-        # print("reached here")
         time.sleep(1)
 
         loaded = False
@@ -251,18 +247,45 @@ class RacecarState:
     def input_callback(self,data):
         """
         ROS-side callback for getting the car control inputs.
+
+        Params:
+            data (AckermannDriveStamped)
+        
+        Returns:
+            None
         """
         self.client.throttle_failsafe = time.time()
         speed = 3*data.drive.speed # scaling
         steering = -data.drive.steering_angle*57.3/16
         self.client.send_controls(steering,speed) # gotta normalize it
 
-    def init_pose_cb(self,msg):
-        return
+    def init_pose_cb(self,data):
+        """
+        initial pose setting callback.
+
+        Params:
+            initial pose (PoseStampedWithCovariance)
+
+        Returns:
+            None
+        """
+        X,Y = data.pose.pose.position.x + 50 ,data.pose.pose.position.y + 50
+        roll, pitch, yaw = quaternion_to_angle(data.pose.pose.orientation)
+        msg = '{ "msg_type" : "car_config", "body_style" : "mushr", "body_r" : "0", "body_g" : "0", "body_b" : "255", "car_name" : "MUSHR", "font_size" : "100", "start_X" : "' + str(round(X, 3)) + '", "start_Y" : "' + str(round(Y, 3)) + '", "start_Z" : "0.20", "yaw" : "' + str( round(yaw, 3) ) + '" }' # do not change
+        self.client.send(msg)
+        time.sleep(1)
 
     def timer_cb(self,event):
+        """
+        timer callback: called at every update time step to get the state update from the simulator. simulator Max update rate is ~60 Hz
+        
+        Params:
+            event
+        Returns:
+            None
+        """
         try:
-            now = rospy.Time.now()
+            now = rospy.Time.now() # technically one could use the client.time_stamp to be more accurate but I have a feeling it might lag behind by 1/60th of a second from this so idk
             self.cur_odom.header.stamp = now
             self.cur_odom.pose.pose.position.x = self.client.pose[0]
             self.cur_odom.pose.pose.position.y = self.client.pose[1]

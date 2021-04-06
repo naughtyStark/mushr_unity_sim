@@ -26,13 +26,6 @@
     <param name="robot_description"
          textfile="$(find mushr_description)/robots/$(arg racecar_version)$(arg racecar_color).urdf"/>
 
-<!--     <include file="$(find mushr_base)/launch/includes/racecar_state.launch" >
-            <arg name="force_in_bounds" value="$(arg force_in_bounds)"/>
-            <arg name="tf_prefix" value="$(arg car_name)" />
-            <arg name="X_offset" value="$(arg x_offset)" />
-            <arg name="Y_offset" value="$(arg y_offset)" />
-            <arg name="angle_offset" value="$(arg theta_offset)" />
-    </include> -->
     <node pkg="unity_backend" name="racecar_state_pub" type="run_sim_single_ros.py">
             <param name="force_in_bounds" value="$(arg force_in_bounds)"/>
             <param name="tf_prefix" value="$(arg car_name)" />
