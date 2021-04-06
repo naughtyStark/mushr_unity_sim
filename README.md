@@ -1,15 +1,21 @@
-# ros_donkey_sim
+# unity_backend_mushr
 
-A ROS-port of the famous [donkey-sim](https://github.com/tawnkramer/sdsandbox) used by the DIY-robocar community. This version is actually a ROS-port of the donkey sim modified for the MuSHR project at The University of Washington. The purpose of this sim is to act as a physics engine. In contrast to other physics engines such as MuJoCo, this one is supposed to be free and open source (no licensing yaaaay!). The source code for the simulator will be shared soon as well. 
+This repository provides a physics engine for use with the MuSHR(link) sim environment. While the default mushr_sim simulation works well for debugging basic operations, a better physics back-end may be used before stepping into the real world. The physics backend here leverages the unity game engine to simulate the motion of the MuSHR car. This results in a simulation that considers wheel slippage, body roll, the inertia of the speed control system, and so on. 
 
-This physics engine bridges (or is supposed to bridge) the gap between the mushr-sim and the real world by providing more realistic physics simulations. At the moment only single agent simulation has been tested, however, multi-agent support is in the works. 
+The unity backend provides a drop-in replacement for the default state simulator (racecar_state.launch). The simulator itself is derived from the donkey-simulator made by Tawn Kramer(check name) and is used by the DIYRobocars community. Unlike the original donkey-simulator, this simulator does not provide camera images. 
+
 
 ### Installation:
-Installing the donkeycar specific gym backend
+
+Assuming you already have the rospy and mushr_sim installed (if not, what are you doing here? Go and install that first (link) )
+you'll also need to have:
+
+
+Installing the donkeycar specific gym backend. We don't actually use the gym environment, we actually just need some helper code. The installation may be modified in the future to make this a self-contained project without any overhanging dependencies.
 ```
 pip install gym-donkeycar
 cd ~/catkin_ws/src
-git clone https://github.com/naughtyStark/ros_donkey_sim.git
+git clone https://github.com/naughtyStark/unity_backend_mushr.git
 cd ~/catkin_ws
 catkin_make
 ```
@@ -17,37 +23,26 @@ catkin_make
 ### Running:
 terminal command:
 ```
-cd ~/catkin_ws/src/ros_donkey_sim/unity
+cd ~/catkin_ws/src/unity_backend_mushr/unity
 ./donkey_sim.x86_64 -batchmode
 ```
-If you have nvidia driver support on your linux machine (god bless), you can probably run it without the "-batchmode" tag. The tag makes the sim run in the headless mode
-which allows for higher fps if you don't have said driver support.
+If you have nvidia driver support on your linux machine (god bless), you can probably run it without the "-batchmode" tag. The tag makes the sim run in the headless mode which allows for higher fps if you don't have said driver support.
 
 In a new tab:
 ```
-roscore
+roslaunch unity_backend unity_multi.launch
 ```
 In another new tab:
 ```
-roslaunch unity_backend unity_backend.launch
-```
-Right now this will set the car in an open area (no obstacles) and provide the car's state on the following topics:
-```
-/car1/car_odom
-/car1/car_pose
-/car1/joint_states
-/car1/car_imu
+rosrun rviz rviz
 ```
 To visualize the simulation in rviz, use the rviz config in 
 ```
 ~/unity_backend/rviz/unity_backend.rviz
 ```
 Note that the linear velocity in the odom messages is in the local reference frame/body-frame.
-The node subscribes to the AckermannDriveStamped type message: 
-```
-/car1/mux/ackermann_cmd_mux/input/navigation
-```
-You can test it by using rostopic pub -r 10 (topic name and so on... ). Note that the car will stop if it doesn't receive a message for more than 1 second.
+
+As it has the same interface as the default mushr_sim multi_teleop.launch, you should be able to drive the cars with the WASD keys.
 
 
 ## Credits:

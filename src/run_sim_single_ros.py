@@ -255,8 +255,8 @@ class RacecarState:
             None
         """
         self.client.throttle_failsafe = time.time()
-        speed = 3*data.drive.speed # scaling
-        steering = -data.drive.steering_angle*57.3/16
+        speed = data.drive.speed 
+        steering = -data.drive.steering_angle*57.3/25 # scaling required before sending it.
         self.client.send_controls(steering,speed) # gotta normalize it
 
     def init_pose_cb(self,data):
@@ -269,7 +269,7 @@ class RacecarState:
         Returns:
             None
         """
-        X,Y = data.pose.pose.position.x + 50 ,data.pose.pose.position.y + 50
+        X,Y = data.pose.pose.position.x + 50 ,data.pose.pose.position.y + 50 # we need a 50x50 offset in position because starting at 0,0 is like starting at the edge of the map and the car gets stuck/shows weird behavior
         roll, pitch, yaw = quaternion_to_angle(data.pose.pose.orientation)
         msg = '{ "msg_type" : "car_config", "body_style" : "mushr", "body_r" : "0", "body_g" : "0", "body_b" : "255", "car_name" : "MUSHR", "font_size" : "100", "start_X" : "' + str(round(X, 3)) + '", "start_Y" : "' + str(round(Y, 3)) + '", "start_Z" : "0.20", "yaw" : "' + str( round(yaw, 3) ) + '" }' # do not change
         self.client.send(msg)
@@ -335,7 +335,7 @@ class RacecarState:
 
             self.cur_joint.header.stamp = now
             #TODO: fix this
-            delta = -16*self.client.steering_angle/57.3
+            delta = -self.client.steering_angle*(25.0/57.3)
             
             if np.abs(delta) < 1e-2:
                 # New joint values
