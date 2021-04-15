@@ -9,9 +9,6 @@
     <arg name="car7_name" default="car7" />
     <arg name="car8_name" default="car8" />
 
-    <arg name="cgr" default = "1.0"/>
-    <arg name="mttc" default = "3"/>
-    <arg name="SolT" default = "20"/>
     <!-- Set to 1 if you want to run the map_server -->
     <arg name="map_server" value = "1"/>
 
@@ -22,18 +19,11 @@
 
     <!-- Launch first car -->
     <group ns="$(arg car1_name)">
-        <include file="$(find unity_backend)/launch/unity_single.launch" >
+        <include file="$(find unity_backend)/launch/unity_single.launch">
             <arg name="car_name" value="$(arg car1_name)"/>
             <arg name="racecar_version" value="racecar-uw-nano"/>
             <arg name="racecar_color" value="" />
         </include>
-<!--         <node pkg="nhttc_ros" type="nhttc_ros_node" name="controller" launch-prefix="xterm -e" output="screen">
-            <param name="car_name" value="car1"/>
-            <param name="solver_time" value="$(arg SolT)"/>
-            <param name="max_ttc" value="$(arg mttc)"/>
-            <param name="carrot_goal_ratio" value="$(arg cgr)"/>
-            <param name="max_agents" value="4"/>
-        </node> -->
     </group>
 
     <!-- Launch second car -->
@@ -42,7 +32,6 @@
             <arg name="car_name" value="$(arg car2_name)"/>
             <arg name="racecar_version" value="racecar-uw-nano"/>
             <arg name="racecar_color" value="-green-black" />
-
         </include>
     </group>
 
@@ -51,7 +40,6 @@
             <arg name="car_name" value="$(arg car3_name)"/>
             <arg name="racecar_version" value="racecar-uw-nano"/>
             <arg name="racecar_color" value="-red-white" />
-
         </include>
     </group>
 
@@ -60,7 +48,6 @@
             <arg name="car_name" value="$(arg car4_name)"/>
             <arg name="racecar_version" value="racecar-uw-nano"/>
             <arg name="racecar_color" value="-purple-gold" />
-
         </include>
     </group>
 

@@ -1,6 +1,5 @@
 #!/usr/bin/env python
 import rospy
-import tf
 import tf.transformations
 from geometry_msgs.msg import Quaternion, PoseStamped, PoseWithCovarianceStamped
 from ackermann_msgs.msg import AckermannDriveStamped
@@ -8,11 +7,8 @@ from nav_msgs.msg import Odometry
 from sensor_msgs.msg import Imu, JointState
 import json
 import time
-from io import BytesIO
-import base64
-import argparse
 import numpy as np
-from gym_donkeycar.core.sim_client import SDClient
+from sim_client import SDClient
 import math as m
 import traceback # this is just for seeing the cause of the error if one is thrown during runtime without stopping the code
 ###########################################
@@ -67,7 +63,6 @@ class SimpleClient(SDClient):
         self.speed = 0
         self.steering_angle = 0
         self.heading = 0
-        self.cte = 0
         self.time_stamp = time.time()
         self.throttle_failsafe = time.time()
 
@@ -91,16 +86,16 @@ class SimpleClient(SDClient):
             self.pose[:3] = np.array([ json_packet["pos_x"], json_packet["pos_y"], json_packet["pos_z"] ])
             self.pose[:2] -= 50.0 # the sim needs a 50x50 offset because starting at 0,0 is the equivalent of starting from the edge and can throw weird bugs..
             self.pose[3:] = np.array([ json_packet["quat_x"],json_packet["quat_y"], json_packet["quat_z"], json_packet["quat_w"]])
+            roll, pitch, yaw = tf.transformations.euler_from_quaternion((self.pose[3], self.pose[4] , self.pose[5], self.pose[6]))
+            print(roll*57.3,pitch*57.3,yaw*57.3)
             self.twist[:3] = np.array([ json_packet["vel_x"],json_packet["vel_y"], json_packet["vel_z"]])
             self.twist[3:] = np.array([ json_packet["gyro_x"], json_packet["gyro_z"], json_packet["gyro_y"]])
             self.accel = np.array([json_packet["Ax"],json_packet["Ay"],json_packet["Az"]])
             self.heading = json_packet["heading"]
             self.speed = json_packet["speed"]
             self.steering_angle = json_packet["steering_angle"]
-            self.hit = json_packet["hit"]
-            self.cte = json_packet["cte"]
 
-            dt = time.time() - self.now
+            dt = time.time() - self.now # in case you wanna measure the fps of the sim engine.
             self.now = time.time()
 
     def send_controls(self, steering, speed):
@@ -271,7 +266,7 @@ class RacecarState:
         """
         X,Y = data.pose.pose.position.x + 50 ,data.pose.pose.position.y + 50 # we need a 50x50 offset in position because starting at 0,0 is like starting at the edge of the map and the car gets stuck/shows weird behavior
         roll, pitch, yaw = quaternion_to_angle(data.pose.pose.orientation)
-        msg = '{ "msg_type" : "car_config", "body_style" : "mushr", "body_r" : "0", "body_g" : "0", "body_b" : "255", "car_name" : "MUSHR", "font_size" : "100", "start_X" : "' + str(round(X, 3)) + '", "start_Y" : "' + str(round(Y, 3)) + '", "start_Z" : "0.20", "yaw" : "' + str( round(yaw, 3) ) + '" }' # do not change
+        msg = '{ "msg_type" : "car_config", "body_style" : "mushr", "body_r" : "0", "body_g" : "0", "body_b" : "255", "car_name" : "MUSHR", "font_size" : "100", "start_X" : "' + str(round(X, 3)) + '", "start_Y" : "' + str(round(Y, 3)) + '", "start_Z" : "0.20", "yaw" : "' + str( round(yaw-m.pi/2, 3) ) + '" }' # do not change
         self.client.send(msg)
         time.sleep(1)
 

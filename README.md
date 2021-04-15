@@ -1,32 +1,36 @@
 # unity_backend_mushr
 
-This repository provides a physics engine for use with the MuSHR(link) sim environment. While the default mushr_sim simulation works well for debugging basic operations, a better physics back-end may be used before stepping into the real world. The physics backend here leverages the unity game engine to simulate the motion of the MuSHR car. This results in a simulation that considers wheel slippage, body roll, the inertia of the speed control system, and so on. 
+This repository provides a physics engine for use with the MuSHR(link) sim environment. While the default mushr_sim simulation works well for debugging basic operations, a better physics back-end may be used before stepping into the real world (or the entire development may be done directly with this physics backend if you want). The physics backend here leverages the unity game engine to simulate the motion of the MuSHR car. This results in a simulation that considers wheel slippage, body roll, the inertia of the speed control system, and so on. 
 
-The unity backend provides a drop-in replacement for the default state simulator (racecar_state.launch). The simulator itself is derived from the donkey-simulator made by Tawn Kramer(check name) and is used by the DIYRobocars community. Unlike the original donkey-simulator, this simulator does not provide camera images. 
-
+Thus, it provides a drop-in replacement for the default state simulator (racecar_state.launch). The simulator itself is derived from the donkey-simulator made by Tawn Kramer(check name) and is used by the DIYRobocars community. Note that this backend does not provide camera images and only acts as a physics backend. 
 
 ### Installation:
 
-Assuming you already have the rospy and mushr_sim installed (if not, what are you doing here? Go and install that first (link) )
-you'll also need to have:
+#### Prerequisites:
+1) ROS
+2) mushr_sim (link to quickstart tutorial)
 
-
-Installing the donkeycar specific gym backend. We don't actually use the gym environment, we actually just need some helper code. The installation may be modified in the future to make this a self-contained project without any overhanging dependencies.
+python dependencies: 
+numpy
 ```
-pip install gym-donkeycar
+pip install numpy
+```
+#### Cloning:
+```
 cd ~/catkin_ws/src
 git clone https://github.com/naughtyStark/unity_backend_mushr.git
 cd ~/catkin_ws
 catkin_make
 ```
+The last catkin_make command is necessary to make the system recognize unity_backend as a valid ros package.
 
-### Running:
+### Running the base example:
 terminal command:
 ```
 cd ~/catkin_ws/src/unity_backend_mushr/unity
 ./donkey_sim.x86_64 -batchmode
 ```
-If you have nvidia driver support on your linux machine (god bless), you can probably run it without the "-batchmode" tag. The tag makes the sim run in the headless mode which allows for higher fps if you don't have said driver support.
+If you have nvidia driver support on your linux machine (god bless), you can run it without the "-batchmode" tag. The tag makes the sim run in the headless mode which allows for higher fps if you don't have said driver support.
 
 In a new tab:
 ```
@@ -40,10 +44,11 @@ To visualize the simulation in rviz, use the rviz config in
 ```
 ~/unity_backend/rviz/unity_backend.rviz
 ```
-Note that the linear velocity in the odom messages is in the local reference frame/body-frame.
+You should see 4 cars by default. The poses of these cars are set by the pose_init.py file. The car's initial pose is set the same way as done for the default mushr_sim; by publishing a message on the /car_name/initialpose topic. 
 
 As it has the same interface as the default mushr_sim multi_teleop.launch, you should be able to drive the cars with the WASD keys.
 
+Note that collisions between the cars will also be simulated (try not to collide though. The purpose was simply to make the simulation somewhat interesting). 
 
 ## Credits:
 Original Source Code
