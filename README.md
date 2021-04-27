@@ -4,14 +4,14 @@ This repository provides a physics engine for use with the MuSHR(link) sim envir
 
 Thus, it provides a drop-in replacement for the default state simulator (racecar_state.launch). The simulator itself is derived from the donkey-simulator made by Tawn Kramer(check name) and is used by the DIYRobocars community. Note that this backend does not provide camera images and only acts as a physics backend. 
 
+#### User Prerequisites:
+1) Familiarity with ROS, python.
+2) Completed the MuSHR [quickstart tutorial](https://mushr.io/tutorials/quickstart/) up to the simulation part.
+
 ### Installation:
 
-#### Prerequisites:
-1) ROS
-2) mushr_sim (link to quickstart tutorial)
-
 python dependencies: 
-numpy
+1) numpy
 ```
 pip install numpy
 ```
