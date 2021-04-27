@@ -79,6 +79,7 @@ Release Engineer
 
 This package was created with Cookiecutter and the audreyr/cookiecutter-pypackage project template.
 
+The ROS-wrapper around the donkey-sim for integration into the MuSHR project was created by [Sidharth Talia](https://www.sidharthtalia.com/)
 
 
 
