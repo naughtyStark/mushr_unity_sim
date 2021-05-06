@@ -19,7 +19,7 @@
 
     <!-- Launch first car -->
     <group ns="$(arg car1_name)">
-        <include file="$(find unity_backend)/launch/unity_single.launch">
+        <include file="$(find mushr_unity_sim)/launch/unity_single.launch">
             <arg name="car_name" value="$(arg car1_name)"/>
             <arg name="racecar_version" value="racecar-uw-nano"/>
             <arg name="racecar_color" value="" />
@@ -28,7 +28,7 @@
 
     <!-- Launch second car -->
     <group ns="$(arg car2_name)">
-        <include file="$(find unity_backend)/launch/unity_single.launch" >
+        <include file="$(find mushr_unity_sim)/launch/unity_single.launch" >
             <arg name="car_name" value="$(arg car2_name)"/>
             <arg name="racecar_version" value="racecar-uw-nano"/>
             <arg name="racecar_color" value="-green-black" />
@@ -36,7 +36,7 @@
     </group>
 
     <group ns="$(arg car3_name)">
-        <include file="$(find unity_backend)/launch/unity_single.launch" >
+        <include file="$(find mushr_unity_sim)/launch/unity_single.launch" >
             <arg name="car_name" value="$(arg car3_name)"/>
             <arg name="racecar_version" value="racecar-uw-nano"/>
             <arg name="racecar_color" value="-red-white" />
@@ -44,13 +44,13 @@
     </group>
 
     <group ns="$(arg car4_name)">
-        <include file="$(find unity_backend)/launch/unity_single.launch" >
+        <include file="$(find mushr_unity_sim)/launch/unity_single.launch" >
             <arg name="car_name" value="$(arg car4_name)"/>
             <arg name="racecar_version" value="racecar-uw-nano"/>
             <arg name="racecar_color" value="-purple-gold" />
         </include>
     </group>
 
-    <node pkg="unity_backend" type="pose_init.py" name="initializer"/>
+    <node pkg="mushr_unity_sim" type="pose_init.py" name="initializer"/>
     
 </launch>

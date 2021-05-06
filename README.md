@@ -1,4 +1,4 @@
-# unity_backend_mushr
+# mushr_unity_sim
 
 This repository provides a physics engine for use with the MuSHR(link) sim environment. While the default mushr_sim simulation works well for debugging basic operations, a better physics back-end may be used before stepping into the real world (or the entire development may be done directly with this physics backend if you want). The physics backend here leverages the unity game engine to simulate the motion of the MuSHR car. This results in a simulation that considers wheel slippage, body roll, the inertia of the speed control system, and so on. 
 
@@ -18,23 +18,23 @@ pip install numpy
 #### Cloning:
 ```
 cd ~/catkin_ws/src
-git clone https://github.com/naughtyStark/unity_backend_mushr.git
+git clone https://github.com/naughtyStark/mushr_unity_sim.git
 cd ~/catkin_ws
 catkin_make
 ```
-The last catkin_make command is necessary to make the system recognize unity_backend as a valid ros package.
+The last catkin_make command is necessary to make the system recognize mushr_unity_sim as a valid ros package.
 
 ### Running the base example:
 terminal command:
 ```
-cd ~/catkin_ws/src/unity_backend_mushr/unity
+cd ~/catkin_ws/src/mushr_unity_sim/unity
 ./donkey_sim.x86_64 -batchmode
 ```
 If you have nvidia driver support on your linux machine (god bless), you can run it without the "-batchmode" tag. The tag makes the sim run in the headless mode which allows for higher fps if you don't have said driver support.
 
 In a new tab:
 ```
-roslaunch unity_backend unity_multi.launch
+roslaunch mushr_unity_sim unity_multi.launch
 ```
 In another new tab:
 ```
@@ -42,7 +42,7 @@ rosrun rviz rviz
 ```
 To visualize the simulation in rviz, use the rviz config in 
 ```
-~/unity_backend/rviz/unity_backend.rviz
+~/mushr_unity_sim/rviz/mushr_unity_sim.rviz
 ```
 You should see 4 cars by default. The poses of these cars are set by the pose_init.py file. The car's initial pose is set the same way as done for the default mushr_sim; by publishing a message on the /car_name/initialpose topic. 
 
