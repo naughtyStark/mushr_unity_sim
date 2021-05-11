@@ -110,7 +110,7 @@ class SDClient(object):
         if self.s is not None:
             self.s.close()
 
-    def proc_msg(self, sock):
+    def proc_msg(self, sock):  # noqa
         '''
         This is the thread message loop to process messages.
         We will send any message that is queued via the self.msg variable
