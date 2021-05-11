@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 """
 SDClient
 
@@ -10,13 +11,13 @@ asynchronous manner.
 Author: Tawn Kramer
 Edited for the unity backend by: Sidharth Talia
 """
-import os
 import time
 import socket
 import select
 from threading import Thread
 import json
 import re
+
 
 def replace_float_notation(string):
     """
@@ -38,7 +39,6 @@ def replace_float_notation(string):
             num = match.group('num').replace(',', '.')
             string = string.replace(match.group('num'), num)
     return string
-    
 
 
 class SDClient(object):
@@ -67,18 +67,17 @@ class SDClient(object):
         """
         self.s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
-        # connecting to the server 
+        # connecting to the server
         print("connecting to", self.host, self.port)
         try:
             self.s.connect((self.host, self.port))
-        except: #ConnectionRefusedError as e:
-            raise( Exception("Could not connect to server. Is it running? If you specified 'remote', then you must start it manually."))
+        except Exception:
+            raise(Exception("Could not connect to server. Is it running?"))
 
         # time.sleep(pause_on_create)
         self.do_process_msgs = True
         self.th = Thread(target=self.proc_msg, args=(self.s,))
-        self.th.start()        
-
+        self.th.start()
 
     def send(self, m):
         """
@@ -89,7 +88,6 @@ class SDClient(object):
         """
         self.msg = m
 
-
     def on_msg_recv(self, j):
         """
         on_msg_recv
@@ -97,12 +95,11 @@ class SDClient(object):
         template callback
         Params: json packet
         Returns: none
-        
+
         """
         # print("got:", j['msg_type'])
         # we will always have a 'msg_type' and will always get a json obj
         pass
-
 
     def stop(self):
         # signal proc_msg loop to stop, then wait for thread to finish
@@ -113,18 +110,17 @@ class SDClient(object):
         if self.s is not None:
             self.s.close()
 
-
     def proc_msg(self, sock):
         '''
         This is the thread message loop to process messages.
         We will send any message that is queued via the self.msg variable
-        when our socket is in a writable state. 
+        when our socket is in a writable state.
         And we will read any messages when it's in a readable state and then
         call self.on_msg_recv with the json object message.
         '''
         sock.setblocking(0)
-        inputs = [ sock ]
-        outputs = [ sock ]
+        inputs = [sock]
+        outputs = [sock]
         partial = []
 
         while self.do_process_msgs:
@@ -140,11 +136,11 @@ class SDClient(object):
                     # print("waiting to recv")
                     try:
                         data = s.recv(1024 * 64)
-                    except ConnectionAbortedError:
+                    except Exception:  # ConnectionAbortedError:
                         print("socket connection aborted")
                         self.do_process_msgs = False
                         break
-                    
+
                     # we don't technically need to convert from bytes to string
                     # for json.loads, but we do need a string in order to do
                     # the split by \n newline char. This seperates each json msg.
@@ -158,7 +154,7 @@ class SDClient(object):
                         first_char = m[0]
                         # check first and last char for a valid json terminator
                         # if not, then add to our partial packets list and see
-                        # if we get the rest of the packet on our next go around.                
+                        # if we get the rest of the packet on our next go around.
                         if first_char == "{" and last_char == '}':
                             # Replace comma with dots for floats
                             # useful when using unity in a language different from English
@@ -184,9 +180,9 @@ class SDClient(object):
                                 else:
                                     print("failed packet.")
                                 partial.clear()
-                        
+
                 for s in writable:
-                    if self.msg != None:
+                    if self.msg is not None:
                         # print("sending", self.msg)
                         s.sendall(self.msg.encode("utf-8"))
                         self.msg = None
@@ -196,5 +192,5 @@ class SDClient(object):
             except Exception as e:
                 print("Exception:", e)
                 self.aborted = True
-                self.on_msg_recv({"msg_type" : "aborted"})
+                self.on_msg_recv({"msg_type": "aborted"})
                 break

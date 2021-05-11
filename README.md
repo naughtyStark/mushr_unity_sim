@@ -42,7 +42,7 @@ $ roslaunch mushr_unity_sim unity_multi.launch
 ```
 In another new tab:
 ``` bash
-$ rviz -d ~/mushr_unity_sim/rviz/mushr_unity_sim.rviz
+$ rviz -d ~/catkin_ws/src/mushr_unity_sim/rviz/mushr_unity_sim.rviz
 ```
 You should see 4 cars by default. The poses of these cars are set by the pose_init.py file. The car's initial pose is set the same way as done for the default mushr_sim; by publishing a message on the /car_name/initialpose topic. 
 
