@@ -1,8 +1,8 @@
 # mushr_unity_sim
 
-Mushr_unity_sim provides provides a drop-in replacement for the default state simulator (racecar_state.launch) used with the MuSHR sim environment. The unity backend allows the simulation of things such as wheel-slippage, body-roll, and so on. This is better suited for those that want to test their control algorithms after they have been tested in the default mushr simulation environment (but you could develop directly with this too).
+Mushr_unity_sim provides provides a drop-in replacement for the default state simulator (racecar_state.py) used in mushr_sim. The unity backend allows the simulation of things such as wheel-slippage, body-roll, and so on. This is better suited for those that want to test their control algorithms after they have been tested in the default mushr simulation environment (but you could develop directly with this too).
 
-Below are the install and run instructions, but the best way to get started is to checkout the this tutorial. Detailed run instructions should be in a tutorial, this serves as a quick reference
+Below are the install and run instructions, but the best way to get started is to checkout the this [tutorial](https://mushr.io/tutorials/mushr_unity_sim/). Detailed run instructions should be in a tutorial, this serves as a quick reference
 
 Author:
 [Sidharth Talia](https://www.sidharthtalia.com/)
@@ -13,42 +13,45 @@ Author:
 
 ### Installation:
 
-#### Cloning the reop:
+#### Cloning the repository::
 ``` bash
 $ cd ~/catkin_ws/src
 $ git clone https://github.com/naughtyStark/mushr_unity_sim.git
 $ cd ~/catkin_ws
 $ catkin_make
 ```
-The last catkin_make command is necessary to make the system recognize mushr_unity_sim as a valid ros package.
+The last catkin_make command is necessary.
 
 Python dependencies: 
 External packages this project depends on: numpy 
 ``` bash
+$ cd ~/catkin_ws/src/mushr_unity_sim
 $ pip install -r requirements.txt
 ```
 
 ### Running the base example:
-terminal command:
-``` bash
-$ cd ~/catkin_ws/src/mushr_unity_sim/unity
-$ ./donkey_sim.x86_64 -batchmode
-```
-If you have nvidia driver support on your linux machine (god bless), you can run it without the "-batchmode" tag. The tag makes the sim run in the headless mode which allows for higher fps if you don't have said driver support.
-
-In a new tab:
+Enter the following commands in the terminal:
 ``` bash
 $ roslaunch mushr_unity_sim unity_multi.launch
 ```
-In another new tab:
+
+You should see 4 cars by default. The poses of these cars are set by the pose_init.py file. The car's initial pose is set the same way as done for the default mushr_sim; by publishing a message on the /car_name/initialpose topic. 
+
+Since it has the same interface as the default mushr_sim multi_teleop.launch, you should be able to drive the cars with the WASD keys.
+
+Note that collisions between the cars will also be simulated.
+
+Launching the simulator seperately:
+``` bash
+$ ./catkin_ws/src/mushr_unity_sim/unity/mushr_unity_sim.x86_64 -batchmode
+```
+The tag `batchmode` is to make sure the simulator runs in headless mode. If you were able to install nvidia graphics drivers on your linux without tanking the display stuff (god bless) you can run it in normal mode. It's not much to look at.
+
+Launching rviz separately:
 ``` bash
 $ rviz -d ~/catkin_ws/src/mushr_unity_sim/rviz/mushr_unity_sim.rviz
 ```
-You should see 4 cars by default. The poses of these cars are set by the pose_init.py file. The car's initial pose is set the same way as done for the default mushr_sim; by publishing a message on the /car_name/initialpose topic. 
 
-As it has the same interface as the default mushr_sim multi_teleop.launch, you should be able to drive the cars with the WASD keys.
-
-Note that collisions between the cars will also be simulated. Try not to collide though. The purpose was simply to make the simulation somewhat interesting and the cars sometimes "break" after collision (A+ for realism).
 
 ### API
 When using namespace in the launch file (as done in unity_multi.launch) the topics will have a prefix attached to them corresponding to the name given to the car. We're calling that name "car_name" for the sake of explanation.

@@ -1,20 +1,23 @@
 <launch>
-    <!-- <node type="rviz" name="rviz" pkg="rviz" args="-d $(find package_name)/rviz/multi_teleop.rviz" /> -->
+    <node pkg="mushr_unity_sim" type="run_sim.sh" name="simrun_script"/> <!-- this script launches the simulator -->
+
+    <node type="rviz" name="rviz" pkg="rviz" args="-d $(find mushr_unity_sim)/rviz/mushr_unity_sim.rviz" /> <!-- this launches rviz -->
+    <!-- this sets the car names -->
     <arg name="car1_name" default="car1" />
     <arg name="car2_name" default="car2" />
     <arg name="car3_name" default="car3" />
     <arg name="car4_name" default="car4" />
-    <arg name="car5_name" default="car5" />
-    <arg name="car6_name" default="car6" />
-    <arg name="car7_name" default="car7" />
-    <arg name="car8_name" default="car8" />
 
     <!-- Set to 1 if you want to run the map_server -->
     <arg name="map_server" value = "1"/>
 
+    <!-- config file to be used (contains friction coefficient)  -->
+    <arg name="mushr_unity_sim_config" default="$(find mushr_unity_sim)/config/mushr_unity_sim.yaml" />
+    <rosparam file="$(arg mushr_unity_sim_config)" command="load" />
+
     <!-- Launch  map server-->
     <group if="$(arg map_server)">
-        <include file="$(find mushr_sim)/launch/map_server.launch" />
+        <include file="$(find mushr_base)/launch/includes/map_server.launch"/>
     </group>
 
     <!-- Launch first car -->
@@ -51,6 +54,6 @@
         </include>
     </group>
 
-    <node pkg="mushr_unity_sim" type="pose_init.py" name="initializer"/>
+    <node pkg="mushr_unity_sim" type="pose_init" name="initializer"/>
     
 </launch>

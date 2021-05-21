@@ -3,13 +3,6 @@
     <!-- Could be racecar-mit, racecar-uw-tx2, or racecar-uw-nano -->
     <arg name="racecar_version" default="racecar-uw-nano" />
 
-    <arg name="map_server" value = "1"/>
-
-    <!-- Launch  map server-->
-    <group if="$(arg map_server)">
-        <include file="$(find mushr_sim)/launch/map_server.launch" />
-    </group>
-
     <!-- The colors of the racecar, should be of the form "-<platform_color>-<inset_color>" -->
     <!-- An empty string will result in the default URDF -->
     <!-- Check CMakeLists.txt of mushr_description for appropriate values -->
@@ -26,7 +19,7 @@
     <param name="robot_description"
          textfile="$(find mushr_description)/robots/$(arg racecar_version)$(arg racecar_color).urdf"/>
 
-    <node pkg="mushr_unity_sim" name="racecar_state_pub" type="run_sim_single_ros.py">
+    <node pkg="mushr_unity_sim" name="racecar_state_pub" type="run_sim_single_ros">
             <param name="force_in_bounds" value="$(arg force_in_bounds)"/>
             <param name="tf_prefix" value="$(arg car_name)" />
             <param name="X_offset" value="$(arg x_offset)" />
