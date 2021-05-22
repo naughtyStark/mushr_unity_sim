@@ -1,6 +1,6 @@
 <launch>
     <node pkg="mushr_unity_sim" type="run_sim.sh" name="simrun_script"/> <!-- this script launches the simulator -->
-
+    
     <node type="rviz" name="rviz" pkg="rviz" args="-d $(find mushr_unity_sim)/rviz/mushr_unity_sim.rviz" /> <!-- this launches rviz -->
     <!-- this sets the car names -->
     <arg name="car1_name" default="car1" />
@@ -53,7 +53,6 @@
             <arg name="racecar_color" value="-purple-gold" />
         </include>
     </group>
-
     <node pkg="mushr_unity_sim" type="pose_init" name="initializer"/>
     
 </launch>

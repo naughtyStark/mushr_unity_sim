@@ -69,10 +69,14 @@ class SDClient(object):
 
         # connecting to the server
         print("connecting to", self.host, self.port)
-        try:
-            self.s.connect((self.host, self.port))
-        except Exception:
-            raise(Exception("Could not connect to server. Is it running?"))
+        connected = False
+        while not connected:
+            try:
+                self.s.connect((self.host, self.port))
+                connected = True
+            except:  # noqa
+                print("Could not connect to server. Retrying")
+                time.sleep(1)
 
         # time.sleep(pause_on_create)
         self.do_process_msgs = True
