@@ -16,9 +16,9 @@
     <rosparam file="$(arg mushr_unity_sim_config)" command="load" />
 
     <!-- Launch  map server-->
-    <group if="$(arg map_server)">
+<!--     <group if="$(arg map_server)">
         <include file="$(find mushr_base)/launch/includes/map_server.launch"/>
-    </group>
+    </group> -->
 
     <!-- Launch first car -->
     <group ns="$(arg car1_name)">
@@ -30,7 +30,7 @@
     </group>
 
     <!-- Launch second car -->
-    <group ns="$(arg car2_name)">
+<!--     <group ns="$(arg car2_name)">
         <include file="$(find mushr_unity_sim)/launch/unity_single.launch" >
             <arg name="car_name" value="$(arg car2_name)"/>
             <arg name="racecar_version" value="racecar-uw-nano"/>
@@ -52,7 +52,7 @@
             <arg name="racecar_version" value="racecar-uw-nano"/>
             <arg name="racecar_color" value="-purple-gold" />
         </include>
-    </group>
+    </group> -->
     <node pkg="mushr_unity_sim" type="pose_init" name="initializer"/>
     
 </launch>

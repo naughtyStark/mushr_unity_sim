@@ -1,0 +1,11 @@
+friction_coefficient: 0.9
+wheelbase: 0.29
+trackwidth: 0.225
+cg_height: 0.1
+cg_ratio: 0.5
+slip_angle_limit: 0.50
+steering_limit: 0.488
+MOI_Z: 0.75  # this is a guess lol. Hang the car by wires and see what ya get
+mass: 4.0  # mass in kilograms
+trajectory_time_constant: 0.5
+wheelspeed_lim: 10
