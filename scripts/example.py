@@ -95,12 +95,12 @@ class autopilot():
         # auto mode variables:
         self.target_WP = None
         self.target_WP = None
-        self.load_WP("simple_loop.npy")
+        self.load_WP("large_loop.npy")
         self.cur_target = np.zeros(3)
         self.cur_Vhat = np.array([1,0,0])
         self.target_Vhat = None
         self.control_Tc = 0.1 # 50 Hz
-        self.speed_time_constant = 0.2
+        self.speed_time_constant = 0.02
         self.rate_demand = np.zeros(3)
         self.rate_gain = 0.5
         self.trajectory_time_constant = config["trajectory_time_constant"]
@@ -114,6 +114,7 @@ class autopilot():
         self.segment_t = 0
         self.last_U = np.zeros(2)
         self.last_rate = np.zeros(2)
+        self.speed_target = 2
         ## logging:
         self.log_file = None
         self.data_log = []
@@ -178,14 +179,15 @@ class autopilot():
         self.max_index = len(self.wp_list) - 1  # maximum index 
         self.setup_complete = True
 
-    def auto_manager(self, speed_target):
+    def auto_manager(self):
         if(not self.setup_complete):
             return
         dist = np.linalg.norm(self.posNED - self.cur_target)
-        self.wp_dist = min(4,max(0.4, speed_target**2 / (self.D_const*9.8)))
+        self.wp_dist = min(4,max(2, self.speed**2 / (2*self.D_const*9.8)))
         upper_lim = len(self.target_WP) - 1
         N = float(10)
         increment = 1.0/N
+        
         while(dist < self.wp_dist):
             self.segment_t += increment
             if(self.segment_t > 1 and self.wp_index < upper_lim - 1):
@@ -200,10 +202,12 @@ class autopilot():
             Curvature,Direction,Normal = get_CTN(P0,P1,P2,P3, self.segment_t)
             self.cur_target = np.array([bx,by,bz])
             self.cur_Vhat = Direction
+            self.speed_target = m.sqrt(self.D_const*9.8/max(m.fabs(Curvature),0.01))
             dist = np.linalg.norm(self.posNED - self.cur_target)
             if(dist < self.wp_dist_final and self.wp_index == upper_lim - 1):
                 self.auto_flag = False
                 print("hit")
+        return self.speed_target
 
     def OdomCallback(self,data):
         now = time.time()
@@ -244,8 +248,7 @@ class autopilot():
 
 
         if(self.target_WP != None and self.setup_complete):
-            target_speed = 4
-            self.auto_manager(target_speed)
+            target_speed = self.auto_manager()
             self.mode_auto(self.cur_target, self.cur_Vhat, target_speed)
             dt = (time.time() - now)*1e3
             # print("delta_t: ", dt)
@@ -333,6 +336,11 @@ class autopilot():
         W[2] = 2 * (self.quat[1]*self.quat[3] - self.quat[0]*self.quat[2])
         return W
 
+    def rotate(self, vec, angle):
+        R = np.array([[np.cos(angle), np.sin(angle)],
+                      [-np.sin(angle), np.cos(angle)]])
+        return np.matmul(R,vec)
+
     def pub_cur_goal(self):
         cur_goal = Odometry()
         cur_goal.header.frame_id = "map"
@@ -381,16 +389,21 @@ class autopilot():
         buf = ((self.D_const*9.8)**2 - (speed*phi_dot)**2)
         buf = max(0, buf)
         acc_buffer = m.sqrt(buf)
-        delta_V_max = acc_buffer*self.speed_time_constant
+        delta_V_max = acc_buffer*self.control_Tc
 
-        max_speed_lookahead = m.sqrt(acc_buffer*np.linalg.norm(P3))
+        max_speed_lookahead = m.sqrt(2*acc_buffer*np.linalg.norm(P3))
         max_speed_current = m.sqrt(self.D_const*9.8/max(m.fabs(horizontal_curvature),0.01))
         max_speed_later = m.sqrt(self.D_const*9.8/max(C_max,0.01))
 
         speed_target = min(speed_target, max_speed_lookahead, max_speed_current, max_speed_later) ## find the least of them all.
-        speed_ref = constrain(speed_target, speed - delta_V_max, speed + delta_V_max)  # constrain change using acceleration buffer.
+        speed_ref = speed_target #constrain(speed_target, speed - delta_V_max, speed + delta_V_max)  # constrain change using acceleration buffer.
         speed_dot = (speed_ref - np.linalg.norm(self.velBF))/self.speed_time_constant
-        # print("speed_ref =", speed_ref)
+        print("speed_ref: ", speed_ref)
+
+        self.ALat_dem = phi_dot*speed
+        self.Alon_dem = speed_dot
+        self.AccVelFrame = self.rotate(self.accBF[:2], self.Beta)
+
         self.low_level_controller(phi_dot, speed_dot, speed_ref, horizontal_curvature)  # low level controller for steering, wheelspeed.
         # self.low_level_controller(1.33, speed_dot, speed_ref, horizontal_curvature)  # low level controller for steering, wheelspeed.
         ## publish controls.
@@ -403,8 +416,8 @@ class autopilot():
         speed = length(self.velBF[:2])
         if(0):
             self.steering = constrain(m.atan(horizontal_curvature/self.wb), -self.phi_lim, self.phi_lim)#constrain(m.atan(phi_dot/(speed*self.wb)), -self.phi_lim, self.phi_lim)
-            self.steering += self.Beta
-            self.wheelspeed = speed_ref + speed_dot*self.speed_time_constant
+            self.steering += 0.1*m.atan((self.rotBF[2] - phi_dot)/max(1, self.speed)/self.wb) + self.Beta
+            self.wheelspeed = speed_ref
         else:
             self.nonlinear_model_inversion(phi_dot, speed_dot, speed_ref)
 
@@ -430,6 +443,7 @@ class autopilot():
 
         phi_dot_ = mv_inv*( Ff*m.sin(th_f) + Fr*m.sin(th_r) )
         vel_dot_ = m_inv *( Ff*m.cos(th_f) + Fr*m.cos(th_r) )
+        acc_dot_ = m_inv *( Ff*m.sin(th_f) + Fr*m.sin(th_r) )
 
         if(self.F_m == None):
             M = np.zeros((2,2))
@@ -451,7 +465,7 @@ class autopilot():
             else:
                 self.F_m = np.array([Ff, Fr])
 
-        return phi_dot_, vel_dot_
+        return phi_dot_, vel_dot_, acc_dot_
 
     def nonlinear_model_inversion(self, phi_dot_setp, vel_dot_setp, speed_ref):
         V = np.linalg.norm(self.velBF[:2]) ## just in case the system decides to fly
@@ -461,15 +475,15 @@ class autopilot():
         Lt = 2*self.accBF[0]*self.mass*self.cgH/self.wb
         Wr = Wb2 + Lt
         Wf = Wb2 - Lt
-        del_st = 0.1  # this is in radians people
-        del_wh = 0.1  # 0.2 m/s delta in 0.02 seconds
+        del_st = 0.01  # this is in radians people
+        del_wh = 0.01 # 0.2 m/s delta in 0.02 seconds
 
         self.F_m = None
-        phi_dot_, vel_dot_ = self.pvdot(self.mass, V, Wf, Wr, st, wh, self.Beta)
+        phi_dot_, vel_dot_, acc_dot_ = self.pvdot(self.mass, V, Wf, Wr, st, wh, self.Beta)
         # print("calced and measd: ", 57.3*phi_dot_, 57.3*self.phi_dot[2])
 
-        phi_dot_st, vel_dot_st = self.pvdot(self.mass, V, Wf, Wr, st + del_st, wh, self.Beta)
-        phi_dot_wh, vel_dot_wh = self.pvdot(self.mass, V, Wf, Wr, st, wh + del_wh, self.Beta)
+        phi_dot_st, vel_dot_st, acc_dot_st = self.pvdot(self.mass, V, Wf, Wr, st + del_st, wh, self.Beta)
+        phi_dot_wh, vel_dot_wh, acc_dot_wh = self.pvdot(self.mass, V, Wf, Wr, st, wh + del_wh, self.Beta)
         
         dphi_dst = (phi_dot_st - phi_dot_)/del_st
         dphi_dwh = (phi_dot_wh - phi_dot_)/del_wh
@@ -477,23 +491,30 @@ class autopilot():
         dvel_dst = (vel_dot_st - vel_dot_)/del_st
         dvel_dwh = (vel_dot_wh - vel_dot_)/del_wh
 
+        dacc_dst = (acc_dot_st - acc_dot_)/del_st
+        dacc_dwh = (acc_dot_wh - acc_dot_)/del_wh
+
         M = np.zeros((2,2))
-        M[0,0] = dphi_dst
-        M[0,1] = dphi_dwh
+        M[0,0] = dacc_dst
+        M[0,1] = dacc_dwh
         M[1,0] = dvel_dst
         M[1,1] = dvel_dwh
-        if(self.speed < 1):
-            M[0,0] = constrain(M[0,0], 10, 15)
-            M[1,1] = constrain(M[1,1], 1, self.D_const*self.B_const*self.C_const*9.8)
-            M[0,1] = 0
-            M[1,0] = 0
+        # if(self.speed < 1):
+        #     M[0,0] = constrain(M[0,0], 10, 15)
+        #     M[1,1] = constrain(M[1,1], 1, self.D_const*self.B_const*self.C_const*9.8)
+        #     M[0,1] = 0
+        #     M[1,0] = 0
 
         # print(np.round(M,2))
 
         del_phi_dot = phi_dot_setp - self.phi_dot[2]
         velvec = self.velBF/self.speed
         del_vel_dot = vel_dot_setp - np.dot(self.accBF,velvec)  ## this works ONLY because the joosbox has the initial tangent aligned with velocity vector
-        X = np.array([del_phi_dot, del_vel_dot])
+        
+        del_acc_dot = self.ALat_dem - self.AccVelFrame[1]
+        del_vel_dot = self.Alon_dem - self.AccVelFrame[0]
+
+        X = np.array([del_acc_dot, del_vel_dot])
         # print(np.round(M,2))
         if(np.linalg.det(M) != 0):
             delta = np.linalg.solve(M,X)
@@ -501,18 +522,21 @@ class autopilot():
             delta = np.zeros(2)
         # print(delta)
         delta[0] = constrain(delta[0], -del_st*2, del_st*2)
-        delta[1] = constrain(delta[1], -del_wh, del_wh)
+        delta[1] = constrain(delta[1], -del_wh*2, del_wh*2)
         output_st = st + delta[0]
         # output_st = constrain(output_st, self.Beta - 0.3, self.Beta + 0.3)
         output_st = constrain(output_st, -self.phi_lim, self.phi_lim)
-        output_wh = constrain(wh + delta[1], 0, speed_ref*1.5)
-        print("nlmi output: ", round(output_st,2), round(output_wh, 2)) #, round(st,2), round(wh,2))
-        # output_st = 0.2
-        # output_wh = 3
+        output_wh = constrain(wh + delta[1], 0, speed_ref)
+        output_wh = constrain(wh + delta[1], 0, 15)
+        # print("nlmi output: ", round(output_st,2), round(output_wh, 2)) #, round(st,2), round(wh,2))
+        # output_st = 0
+        # output_wh = 6
         self.steering = output_st
-        self.steering_estimate = 0.8*self.steering + 0.2*self.steering_estimate  # update steering estimate
         self.wheelspeed = output_wh
-        self.wheelspeed_estimate = 0.8*self.wheelspeed + 0.2*self.wheelspeed_estimate
+        self.steering_estimate = output_st
+        self.wheelspeed_estimate = output_wh
+        # self.steering_estimate = 0.5*self.steering + 0.5*self.steering_estimate  # update steering estimate
+        # self.wheelspeed_estimate = 0.5*self.wheelspeed + 0.5*self.wheelspeed_estimate
 
 
 

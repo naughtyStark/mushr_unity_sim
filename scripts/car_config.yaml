@@ -8,4 +8,4 @@ steering_limit: 0.488
 MOI_Z: 0.75  # this is a guess lol. Hang the car by wires and see what ya get
 mass: 4.0  # mass in kilograms
 trajectory_time_constant: 0.5
-wheelspeed_lim: 10
+wheelspeed_lim: 15
