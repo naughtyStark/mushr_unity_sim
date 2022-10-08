@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 #!/usr/bin/env python3
+=======
+#!/usr/bin/env python
+>>>>>>> f1df66dde220f9deec79a31c38407d9ce7d088f1
 import numpy as np
 from numpy.linalg import norm as norm
 import math as m
