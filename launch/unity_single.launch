@@ -34,7 +34,7 @@
     </node>
 
 
-    <include file="$(find mushr_sim)/launch/keyboard_teleop.launch.xml" />
+    <!-- <include file="$(find mushr_sim)/launch/keyboard_teleop.launch.xml" /> -->
 
 
     <group ns="mux">
@@ -43,18 +43,17 @@
         </include>
     </group>
 
-    <group ns="vesc">
-        <!-- Start electronic speed controller driver -->
+<!--     <group ns="vesc">
         <include file="$(find mushr_sim)/launch/vesc.launch.xml" >
             <arg name="mux_output_topic" value="/$(arg car_name)/mux/ackermann_cmd_mux/output" />
             <arg name="car_name" value="/$(arg car_name)" />
         </include>
-    </group>
+    </group> -->
 
     <!-- Launch sensors -->
-    <include file="$(find mushr_sim)/launch/sensors.launch.xml" >
+<!--     <include file="$(find mushr_sim)/launch/sensors.launch.xml" >
         <arg name="racecar_version" value="$(arg racecar_version)" />
         <arg name="tf_prefix" value="$(arg car_name)"/>
-    </include>
+    </include> -->
 
 </launch>
