@@ -34,7 +34,7 @@
     </node>
 
 
-    <include file="$(find mushr_sim)/launch/keyboard_teleop.launch.xml" />
+    <!-- <include file="$(find mushr_sim)/launch/keyboard_teleop.launch.xml" /> -->
 
 
     <group ns="mux">

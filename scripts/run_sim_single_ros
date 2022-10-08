@@ -83,7 +83,7 @@ class SimpleClient(SDClient):
                                      json_packet["quat_z"], json_packet["quat_w"]])
             roll, pitch, yaw = tf.transformations.euler_from_quaternion((self.pose[3], self.pose[4],
                                                                         self.pose[5], self.pose[6]))
-            self.twist[:3] = np.array([json_packet["vel_x"], json_packet["vel_y"], json_packet["vel_z"]])
+            self.twist[:3] = np.array([json_packet["vel_y"], -json_packet["vel_x"], json_packet["vel_z"]])
             self.twist[3:] = np.array([json_packet["gyro_x"], json_packet["gyro_z"], json_packet["gyro_y"]])
             self.accel = np.array([json_packet["Ax"], json_packet["Ay"], json_packet["Az"]])
             self.heading = json_packet["heading"]
